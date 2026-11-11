@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dreckige Methode – Trainings-App</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+:root { --accent: #ff6b00; --bg: #0a0a0a; --card: #161616; --text: #eee; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: var(--bg); color: var(--text); line-height: 1.5; }
+h1 { color: var(--accent); text-align: center; }
+.card { background: var(--card); border-radius: 16px; padding: 20px; margin: 15px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+.timer { font-size: 4em; font-weight: 700; text-align: center; color: var(--accent); margin: 10px 0; }
+button { background: var(--accent); color: white; border: none; padding: 12px 18px; border-radius: 10px; font-size: 15px; cursor: pointer; margin: 5px; transition: 0.2s; }
+button:hover { background: #e55a00; transform: translateY(-1px); }
+.btn-secondary { background: #333; }
+input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #333; background: #222; color: white; box-sizing: border-box; }
+.log-entry { background: #1f1f1f; padding: 12px; margin: 8px 0; border-radius: 10px; border-left: 3px solid var(--accent); }
+.reminder-status { text-align: center; color: #aaa; font-size: 0.9em; }
+.progress-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+.progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+</style>
+</head>
+<body>
+<h1><i class="fas fa-dumbbell"></i> Dreckige Methode</h1>
+
+<div class="card" id="todayCard"></div>
+
+<div class="card">
+  <h2><i class="fas fa-stopwatch"></i> Timer</h2>
+  <div class="timer" id="timerDisplay">15:00</div>
+  <div class="progress-bar"><div class="progress-fill" id="timerProgress"></div></div>
+  <div style="text-align:center;">
+    <button onclick="startTimer(15*60, 'density')">Dichte 15 Min</button>
+    <button onclick="startTimer(20*60, 'rest')">Pause 20 Min</button>
+    <button onclick="startTimer(90, 'short')">90s Pause</button>
+    <button class="btn-secondary" onclick="stopTimer()">Stop</button>
+  </div>
+  <div style="text-align:center; margin-top:15px;">
+    Sätze in dieser Einheit: <strong id="setCount">0</strong>
+    <button onclick="addSet()">+ Satz</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2><i class="fas fa-bell"></i> Automatische Erinnerungen</h2>
+  <p>Erinnerung alle 90 Minuten für Grease-the-Groove-Sätze (nur wenn Browser erlaubt).</p>
+  <button onclick="enableReminders()">Erinnerungen aktivieren</button>
+  <div class="reminder-status" id="reminderStatus">Nicht aktiv</div>
+</div>
+
+<div class="card">
+  <h2><i class="fas fa-pen"></i> Heute loggen</h2>
+  <select id="logType">
+    <option>Grease the Groove</option>
+    <option>Dichte-Training</option>
+    <option>Leitern</option>
+    <option>Schockmethode</option>
+    <option>Notiz</option>
+  </select>
+  <input type="text" id="logExercise" placeholder="Übung (z.B. Liegestütze)">
+  <input type="number" id="logReps" placeholder="Wiederholungen / Anzahl Sätze">
+  <textarea id="logNote" rows="2" placeholder="Notiz (Gefühl, Technik, Energie, Schlaf...)"></textarea>
+  <button onclick="saveLog()">Eintrag speichern</button>
+</div>
+
+<div class="card">
+  <h2><i class="fas fa-book"></i> Trainings-Tagebuch</h2>
+  <div id="logBook"></div>
+</div>
+
+<script>
+const days = {
+  1: { name: "Montag – Schwer", content: "Schockmethode → Leitern → Bulgarian Split Squats<br>+ tägliche GtG-Sätze" },
+  2: { name: "Dienstag – Mittel", content: "15-Min Dichte-Training<br>+ tägliche GtG-Sätze" },
+  3: { name: "Mittwoch – Leicht", content: "Nur Grease the Groove (5–8 Sätze verteilt)" },
+  4: { name: "Donnerstag – Schwer", content: "Schockmethode → Leitern → Bulgarian Split Squats<br>+ tägliche GtG-Sätze" },
+  5: { name: "Freitag – Mittel", content: "15-Min Dichte-Training<br>+ tägliche GtG-Sätze" },
+  6: { name: "Samstag – Leicht", content: "Nur Grease the Groove" },
+  0: { name: "Sonntag – Pause", content: "Komplette Ruhe" }
+};
+
+function showToday() {
+  const d = new Date().getDay();
+  document.getElementById('todayCard').innerHTML = `<h2>${days[d].name}</h2><p>${days[d].content}</p>`;
+}
+showToday();
+
+// Timer
+let timerInterval, timeLeft = 0, totalTime = 0;
+function startTimer(seconds, type) {
+  stopTimer();
+  timeLeft = totalTime = seconds;
+  updateTimer();
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    updateTimer();
+    if (timeLeft <= 0) {
+      stopTimer();
+      new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA').play().catch(()=>{});
+      if (Notification.permission === 'granted') {
+        new Notification('Timer abgelaufen!', { body: type === 'density' ? 'Dichte-Training beendet' : 'Pause vorbei' });
+      } else {
+        alert('Zeit abgelaufen!');
+      }
+    }
+  }, 1000);
+}
+function stopTimer() { clearInterval(timerInterval); }
+function updateTimer() {
+  const m = Math.floor(Math.max(0, timeLeft) / 60).toString().padStart(2,'0');
+  const s = (Math.max(0, timeLeft) % 60).toString().padStart(2,'0');
+  document.getElementById('timerDisplay').textContent = `${m}:${s}`;
+  const pct = totalTime ? ((totalTime - timeLeft) / totalTime * 100) : 0;
+  document.getElementById('timerProgress').style.width = pct + '%';
+}
+function addSet() {
+  let c = parseInt(document.getElementById('setCount').textContent) || 0;
+  document.getElementById('setCount').textContent = c + 1;
+}
+
+// Reminders
+let reminderInterval;
+function enableReminders() {
+  if (!('Notification' in window)) {
+    alert('Dein Browser unterstützt keine Benachrichtigungen.');
+    return;
+  }
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      document.getElementById('reminderStatus').textContent = 'Aktiv – Erinnerung alle 90 Minuten';
+      if (reminderInterval) clearInterval(reminderInterval);
+      reminderInterval = setInterval(() => {
+        new Notification('Grease the Groove', { body: 'Zeit für einen Praxis-Satz! (Liegestütze / Ziehen)' });
+      }, 90 * 60 * 1000);
+      // Erste Erinnerung nach 5 Min zum Testen (optional entfernen)
+      setTimeout(() => new Notification('Test', { body: 'Erinnerungen funktionieren!' }), 5000);
+    } else {
+      document.getElementById('reminderStatus').textContent = 'Berechtigung verweigert';
+    }
+  });
+}
+
+// Log
+function saveLog() {
+  const entry = {
+    date: new Date().toLocaleString('de-DE'),
+    type: document.getElementById('logType').value,
+    exercise: document.getElementById('logExercise').value || '-',
+    reps: document.getElementById('logReps').value || '-',
+    note: document.getElementById('logNote').value
+  };
+  let logs = JSON.parse(localStorage.getItem('sowjetLog') || '[]');
+  logs.unshift(entry);
+  localStorage.setItem('sowjetLog', JSON.stringify(logs.slice(0, 100))); // max 100 Einträge
+  renderLog();
+  ['logExercise','logReps','logNote'].forEach(id => document.getElementById(id).value = '');
+}
+
+function renderLog() {
+  const logs = JSON.parse(localStorage.getItem('sowjetLog') || '[]');
+  document.getElementById('logBook').innerHTML = logs.length ? logs.map(l => 
+    `<div class="log-entry"><strong>${l.date}</strong> – ${l.type}<br>
+     <i class="fas fa-dumbbell"></i> ${l.exercise} | ${l.reps}<br>
+     ${l.note ? '<em>' + l.note + '</em>' : ''}</div>`
+  ).join('') : '<p>Noch keine Einträge.</p>';
+}
+renderLog();
+</script>
+</body>
+</html>
